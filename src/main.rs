@@ -2,7 +2,7 @@ use std::cmp::max;
 use std::collections::BTreeMap;
 
 // We're gonna put these into a map
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialOrd, Ord)]
 struct Item {
     label: String,
     cost: u32,
@@ -10,6 +10,20 @@ struct Item {
 }
 
 impl Item {
+    fn dummy(_label: String) -> Self {
+        Item {
+            label: _label,
+            cost: 0,
+            size: 0,
+        }
+    }
+    fn new(_label: String, _cost: u32, _size: u32) -> Self {
+        Item {
+            label: _label,
+            cost: _cost,
+            size: _size,
+        }
+    }
     fn get_label(&self) -> &String {
         &self.label
     }
@@ -20,6 +34,15 @@ impl Item {
         self.size
     }
 }
+
+// Just comparing by label
+impl PartialEq for Item {
+    fn eq(&self, other: &Self) -> bool {
+        self.label.trim() == other.label.trim()
+    }
+}
+
+impl Eq for Item {}
 
 // Unfortunately, due to technical limitations, I can only do LRU or FIFO tiebreaking.
 #[derive(Debug)]
@@ -37,8 +60,21 @@ struct Landlord {
 }
 
 impl Landlord {
-    fn refresh(&self, val: &String) -> u32 {
-        0
+    // Refreshes the credit of the given item if it exists
+    fn refresh(&mut self, val: &Item) -> u32 {
+        let mut cred = match self.cache.get_mut(&val) {
+            Some(i) => i,
+            None => &u32::MAX,
+        };
+        let bind = self.ref_scalar * val.cost;
+        cred = max(cred, &bind);
+        *cred
+    }
+
+    // Requests the given item. Refreshes the credit of the item if it exists and otherwise the
+    // item gets added. We update the tiebreaking order accordingly.
+    fn request(&mut self, val: &Item) -> u32 {
+        self.refresh(&val)
     }
 }
 
