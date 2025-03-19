@@ -4,6 +4,9 @@ use std::collections::BTreeMap;
 use std::{env, fs};
 use toml::toml;
 
+// STRUCTS
+// ----------------------------------------------------------------------------
+
 #[derive(Debug, Serialize, Deserialize)]
 struct TraceInfo {
     items: Vec<Item>,
@@ -17,6 +20,43 @@ struct Item {
     cost: u32,
     size: u32,
 }
+
+#[derive(Debug)]
+struct Landlord<'a> {
+    cache: BTreeMap<&'a Item, u32>,
+    size: u32,
+    ref_scalar: u32,
+    tie_breaking: TieBreaker,
+}
+
+// Unfortunately, due to technical limitations, I can only do LRU or FIFO tiebreaking.
+#[derive(Debug)]
+enum TieBreaker {
+    FIFO,
+    LRU,
+}
+
+// TRAITS
+// -----------------------------------------------------------------------------
+
+// Hit policy trait. You can implement this for your Landlord variant to give it custom hit policy
+// behavior that doesn't just refresh the credit to some scalar between 0 and 1.
+trait HitPolicy {
+    fn refresh(this: &mut Self, item: &Item) -> u32;
+}
+
+// Tiebreaking trait. You can implement this for your Landlord variant to give it custom
+// tiebreaking behavior that isn't LRU or FIFO.
+trait TiebreakPolicy {
+    fn tiebreak(this: &mut Self, map: &mut BTreeMap<&Item, u32>);
+}
+
+trait Request {
+    fn request(this: &mut Self, item: &Item) -> u32;
+}
+
+// IMPLEMENTATIONS
+// -----------------------------------------------------------------------------
 
 impl Item {
     fn dummy(_label: String) -> Self {
@@ -53,24 +93,9 @@ impl PartialEq for Item {
 
 impl Eq for Item {}
 
-// Unfortunately, due to technical limitations, I can only do LRU or FIFO tiebreaking.
-#[derive(Debug)]
-enum TieBreaker {
-    FIFO,
-    LRU,
-}
-
-#[derive(Debug)]
-struct Landlord {
-    cache: BTreeMap<Item, u32>,
-    size: u32,
-    ref_scalar: u32,
-    tie_breaking: TieBreaker,
-}
-
-impl Landlord {
+impl<'a> Landlord<'a> {
     // Refreshes the credit of the given item if it exists
-    fn refresh(&mut self, val: &Item) -> u32 {
+    fn refresh(&mut self, val: &'a Item) -> u32 {
         let mut cred = match self.cache.get_mut(&val) {
             Some(i) => i,
             None => &u32::MAX,
@@ -82,7 +107,7 @@ impl Landlord {
 
     // Requests the given item. Refreshes the credit of the item if it exists and otherwise the
     // item gets added. We update the tiebreaking order accordingly.
-    fn request(&mut self, val: &Item) -> u32 {
+    fn request(&mut self, val: &'a Item) -> u32 {
         self.refresh(&val)
     }
 }
