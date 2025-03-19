@@ -1,0 +1,14 @@
+[items]
+A0.cost = 100
+A0.size = 1
+B0.cost = 50
+B0.size = 2
+B1.cost = 25
+B1.size = 5
+B2.cost = 1
+B2.size = 20
+[trace]
+trace.0 = "A0"
+trace.1 = "B0"
+trace.2 = "B1"
+trace.3 = "B2"
