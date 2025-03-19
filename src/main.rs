@@ -1,8 +1,17 @@
+use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::collections::BTreeMap;
+use std::{env, fs};
+use toml::toml;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct TraceInfo {
+    items: Vec<Item>,
+    trace: Vec<String>,
+}
 
 // We're gonna put these into a map
-#[derive(Debug, PartialOrd, Ord)]
+#[derive(Debug, PartialOrd, Ord, Serialize, Deserialize)]
 struct Item {
     label: String,
     cost: u32,
@@ -79,5 +88,7 @@ impl Landlord {
 }
 
 fn main() {
-    println!("Hello, world!");
+    let data: &str = &fs::read_to_string("items.toml").expect("Could not read file");
+    let test: TraceInfo = toml::from_str(data).expect("Could not convert TOML file");
+    dbg!(test);
 }
