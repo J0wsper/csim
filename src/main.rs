@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::cmp::max;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::{env, fs};
 use toml::toml;
 
@@ -13,27 +13,40 @@ struct TraceInfo {
     trace: Vec<String>,
 }
 
-// We're gonna put these into a map
-#[derive(Debug, PartialOrd, Ord, Serialize, Deserialize)]
+// These are the keys for our cache map
+#[derive(Debug, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
 struct Item {
     label: String,
     cost: u32,
     size: u32,
 }
 
+// Tiebreaking order struct
 #[derive(Debug)]
-struct Landlord<'a> {
-    cache: BTreeMap<&'a Item, u32>,
-    size: u32,
-    ref_scalar: u32,
-    tie_breaking: TieBreaker,
+struct Tiebreaker<'a> {
+    order: VecDeque<&'a Item>,
+    len: u32,
 }
 
-// Unfortunately, due to technical limitations, I can only do LRU or FIFO tiebreaking.
 #[derive(Debug)]
-enum TieBreaker {
-    FIFO,
-    LRU,
+struct Cache<'a> {
+    contents: BTreeMap<&'a Item, f32>,
+    size: u32,
+}
+
+// LRU Landlord
+#[derive(Debug)]
+struct LLL<'a> {
+    cache: Cache<'a>,
+    tiebreaking: Tiebreaker<'a>,
+}
+
+// FIFO Landlord
+#[derive(Debug)]
+struct FLL<'a> {
+    cache: BTreeMap<&'a Item, f32>,
+    order: VecDeque<&'a Item>,
+    size: u32,
 }
 
 // TRAITS
@@ -42,17 +55,23 @@ enum TieBreaker {
 // Hit policy trait. You can implement this for your Landlord variant to give it custom hit policy
 // behavior that doesn't just refresh the credit to some scalar between 0 and 1.
 trait HitPolicy {
-    fn refresh(this: &mut Self, item: &Item) -> u32;
+    fn refresh(&mut self, item: &Item) -> f32;
 }
 
 // Tiebreaking trait. You can implement this for your Landlord variant to give it custom
 // tiebreaking behavior that isn't LRU or FIFO.
-trait TiebreakPolicy {
-    fn tiebreak(this: &mut Self, map: &mut BTreeMap<&Item, u32>);
+trait TiebreakPolicy<'a> {
+    fn tiebreak_update(&mut self, item: &'a Item);
 }
 
 trait Request {
-    fn request(this: &mut Self, item: &Item) -> u32;
+    fn request(&mut self, item: &Item) -> f32;
+}
+
+// Implements the default Landlord functionality as its own trait
+trait Landlord {
+    fn hit() -> f32;
+    fn fault() -> Option<f32>;
 }
 
 // IMPLEMENTATIONS
@@ -84,31 +103,61 @@ impl Item {
     }
 }
 
-// Just comparing by label
-impl PartialEq for Item {
-    fn eq(&self, other: &Self) -> bool {
-        self.label.trim() == other.label.trim()
+// Generic tiebreaking behavior
+impl<'a> Tiebreaker<'_> {
+    // We tiebreak according to whichever item is closest to the back.
+    fn tiebreak(&mut self, cache: &Cache) -> &Item {
+        for (i, item) in self.order.iter().rev().enumerate() {
+            let credit = *match cache.contents.get(item) {
+                Some(i) => i,
+                None => panic!("Cache tiebreaking ordering contains items that are not in cache"),
+            };
+            if credit == 0.0 {
+                return item;
+            }
+        }
+        panic!("Cache does not have any 0 credit elements at the time of eviction.");
     }
 }
 
-impl Eq for Item {}
-
-impl<'a> Landlord<'a> {
-    // Refreshes the credit of the given item if it exists
-    fn refresh(&mut self, val: &'a Item) -> u32 {
-        let mut cred = match self.cache.get_mut(&val) {
-            Some(i) => i,
-            None => &u32::MAX,
-        };
-        let bind = self.ref_scalar * val.cost;
-        cred = max(cred, &bind);
-        *cred
+impl<'a> Cache<'_> {
+    fn hit(item: &'a Item) -> f32 {
+        0.0
     }
+    fn fault(item: &'a Item) -> f32 {
+        0.0
+    }
+}
 
-    // Requests the given item. Refreshes the credit of the item if it exists and otherwise the
-    // item gets added. We update the tiebreaking order accordingly.
-    fn request(&mut self, val: &'a Item) -> u32 {
-        self.refresh(&val)
+impl<'a> TiebreakPolicy<'a> for FLL<'a> {
+    // We do not update the tiebreaking policy on a hit to an item. However, we do update the
+    // ordering if that item just entered cache.
+    fn tiebreak_update(&mut self, item: &'a Item) {
+        if self.order.len() > self.size as usize {
+            panic!("Too many items in the tiebreak ordering vector");
+        } else if !self.order.contains(&item) {
+            self.order.push_front(item);
+        }
+    }
+}
+
+// Implementing the LRU-Landlord tiebreaking policy
+impl<'a> TiebreakPolicy<'a> for LLL<'a> {
+    fn tiebreak_update(&mut self, item: &'a Item) {
+        if self.tiebreaking.order.len() > self.tiebreaking.len as usize {
+            panic!("Too many items in the tiebreak ordering vector");
+        } else if self.tiebreaking.order.contains(&item) {
+            let pos = self
+                .tiebreaking
+                .order
+                .iter()
+                .position(|x| x == &item)
+                .expect("Could not find the position of the given item in the tiebreaking order despite containment");
+            self.tiebreaking.order.remove(pos);
+            self.tiebreaking.order.push_front(item);
+        } else {
+            self.tiebreaking.order.push_front(item);
+        }
     }
 }
 
