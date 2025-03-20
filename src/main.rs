@@ -26,11 +26,13 @@ struct Item {
 struct Tiebreaker<'a> {
     order: VecDeque<&'a Item>,
     len: u32,
+    size: u32,
 }
 
 #[derive(Debug)]
 struct Cache<'a> {
     contents: BTreeMap<&'a Item, f32>,
+    len: u32,
     size: u32,
 }
 
@@ -44,9 +46,8 @@ struct LLL<'a> {
 // FIFO Landlord
 #[derive(Debug)]
 struct FLL<'a> {
-    cache: BTreeMap<&'a Item, f32>,
-    order: VecDeque<&'a Item>,
-    size: u32,
+    cache: Cache<'a>,
+    tiebreaking: Tiebreaker<'a>,
 }
 
 // TRAITS
@@ -74,17 +75,10 @@ trait Landlord {
     fn fault() -> Option<f32>;
 }
 
-// IMPLEMENTATIONS
+// IMPLEMENTATING STRUCTS
 // -----------------------------------------------------------------------------
 
 impl Item {
-    fn dummy(_label: String) -> Self {
-        Item {
-            label: _label,
-            cost: 0,
-            size: 0,
-        }
-    }
     fn new(_label: String, _cost: u32, _size: u32) -> Self {
         Item {
             label: _label,
@@ -95,8 +89,8 @@ impl Item {
     fn get_label(&self) -> &String {
         &self.label
     }
-    fn get_cost(&self) -> u32 {
-        self.cost
+    fn get_cost(&self) -> f32 {
+        self.cost as f32
     }
     fn get_size(&self) -> u32 {
         self.size
@@ -120,23 +114,61 @@ impl<'a> Tiebreaker<'_> {
     }
 }
 
-impl<'a> Cache<'_> {
-    fn hit(item: &'a Item) -> f32 {
-        0.0
+// If we fault and it returns 'false', we should enter into a tiebreaking decision.
+impl<'a> Cache<'a> {
+
+    fn fault(&mut self, req: &'a Item) -> bool {
+        if self.len > self.size {
+            panic!("Cache contains too many reqs");
+        } else if self.len < self.size {
+            self.contents.insert(req, req.get_cost());
+            return true;
+        } else {
+            let mut min = &f32::MAX;
+
+            let mut min = self.contents.into_iter().min_by_key(|a| a.1);
+
+            // And another pass to find if there are any others that share that credit.
+            let mut num = 0;
+            let mut i: &Item;
+            for (item, cred) in self.contents.iter() {
+                if cred == min {
+                    i = item;
+                    num += 1;
+                }
+            }
+
+            if num == 1 {
+                self.contents.iter().map(|(x, k)| k - min);                
+                self.contents.remove(i);
+                return true;
+            }
+            else {
+                return false;
+            }
+        }
     }
-    fn fault(item: &'a Item) -> f32 {
-        0.0
+    fn request(&mut self, item: &'a Item) -> bool {
+        if self.contents.contains_key(item) {
+            Cache::<'_>hit(item);
+        } else {
+            Cache::<'_>fault(item);
+        }
     }
 }
+
+// IMPLEMENTING TRAITS
+// -----------------------------------------------------------------------------
 
 impl<'a> TiebreakPolicy<'a> for FLL<'a> {
     // We do not update the tiebreaking policy on a hit to an item. However, we do update the
     // ordering if that item just entered cache.
     fn tiebreak_update(&mut self, item: &'a Item) {
-        if self.order.len() > self.size as usize {
-            panic!("Too many items in the tiebreak ordering vector");
-        } else if !self.order.contains(&item) {
-            self.order.push_front(item);
+        let contains = self.tiebreaking.order.contains(&item);
+        if !contains && self.tiebreaking.len >= self.tiebreaking.size {
+            panic!("Tiebreaking order housekeeping failed");
+        } else if !contains {
+            self.tiebreaking.order.push_front(item);
         }
     }
 }
@@ -144,9 +176,12 @@ impl<'a> TiebreakPolicy<'a> for FLL<'a> {
 // Implementing the LRU-Landlord tiebreaking policy
 impl<'a> TiebreakPolicy<'a> for LLL<'a> {
     fn tiebreak_update(&mut self, item: &'a Item) {
-        if self.tiebreaking.order.len() > self.tiebreaking.len as usize {
-            panic!("Too many items in the tiebreak ordering vector");
-        } else if self.tiebreaking.order.contains(&item) {
+        let contains = self.tiebreaking.order.contains(&item);
+        if !contains && self.tiebreaking.len >= self.tiebreaking.size {
+            panic!("Tiebreaking order housekeeping failed");
+        } else if !contains {
+            self.tiebreaking.order.push_front(item);
+        } else {
             let pos = self
                 .tiebreaking
                 .order
@@ -154,8 +189,6 @@ impl<'a> TiebreakPolicy<'a> for LLL<'a> {
                 .position(|x| x == &item)
                 .expect("Could not find the position of the given item in the tiebreaking order despite containment");
             self.tiebreaking.order.remove(pos);
-            self.tiebreaking.order.push_front(item);
-        } else {
             self.tiebreaking.order.push_front(item);
         }
     }
