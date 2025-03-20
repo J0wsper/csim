@@ -90,22 +90,46 @@ impl Item {
 }
 
 impl<'a> Landlord<'a> {
-    fn hit(&mut self, item: &Item) -> OrderedFloat<f32>;
-    fn fault(&mut self, item: &Item) -> OrderedFloat<f32> {
+    fn hit(&mut self, item: &'a Item) -> OrderedFloat<f32>;
+    fn evict(&mut self, size: u32) -> OrderedFloat<f32> {
+        // Getting our return value
+        let mut pressure = OrderedFloat(0.0);
+
+        // Getting the minimum credit item
+        let min = self
+            .cache
+            .contents
+            .iter()
+            .min_by_key(|a| a.1 / OrderedFloat(a.0.get_size() as f32))
+            .expect("Could not find minimum credit element");
+
+        // Getting the normalized credit
+        let norm_credit = min.1 / OrderedFloat(min.0.get_size() as f32);
+        self.cache.contents.iter().map(|a| a.1 - norm_credit);
+        pressure += norm_credit;
+
+        // Finding how many items of 0 credit there are now
+
+        // Returning our pressure at the end
+        pressure
+    }
+    fn fault(&mut self, item: &'a Item) -> OrderedFloat<f32> {
         // If the cache has too many items, throw an error
         if self.cache.len > self.cache.size as usize {
             panic!("Cache is overfull");
         }
         // If the cache has empty space, just add the item
-        else if self.cache.len < self.cache.size as usize {
+        else if self.cache.len < (self.cache.size + item.get_size()) as usize {
             self.cache.contents.insert(item, item.get_cost());
             return OrderedFloat(0.0);
         }
         // Otherwise, the cache is full and we need evict something
         else {
+            let size = item.get_size();
+            return self.evict(size);
         }
     }
-    fn request(&mut self, item: &Item) -> OrderedFloat<f32> {
+    fn request(&mut self, item: &'a Item) -> OrderedFloat<f32> {
         if self.cache.contents.contains_key(&item) {
             return self.hit(item);
         } else {

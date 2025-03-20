@@ -1,7 +1,0 @@
-items = [
-{label = "A0", cost = 2, size = 30},
-{label = "B0", cost = 3, size = 40},
-{label = "C0", cost = 4, size = 90},
-{label = "D0", cost = 1, size = 80},
-]
-trace = ["A0", "B0", "C0", "D0", "B0", "A0"] 
