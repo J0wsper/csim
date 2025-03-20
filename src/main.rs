@@ -1,6 +1,5 @@
 use ordered_float::OrderedFloat;
 use serde::{Deserialize, Serialize};
-use std::cmp::max;
 use std::collections::{BTreeMap, VecDeque};
 use std::{env, fs};
 use toml::toml;
@@ -90,7 +89,28 @@ impl Item {
 }
 
 impl<'a> Landlord<'a> {
-    fn hit(&mut self, item: &'a Item) -> OrderedFloat<f32>;
+    // TODO: Implement this
+    fn hit(&mut self, item: &'a Item) -> OrderedFloat<f32> {
+        OrderedFloat(0.0)
+    }
+
+    // Finding the element we want to evict in the case of a tie
+    fn tiebreak(&mut self) -> &'a Item {
+        let mut zeros = Vec::new();
+        for (item, cred) in self.cache.contents.iter() {
+            if *cred == 0.0 {
+                zeros.push(*item);
+            }
+        }
+        for cand in self.tiebreaker.order.iter().rev() {
+            if zeros.contains(cand) {
+                return cand;
+            }
+        }
+        panic!("Tiebreaking order mismanagement");
+    }
+
+    // Evicting an element if we do not have enough space for it
     fn evict(&mut self, size: u32) -> OrderedFloat<f32> {
         // Getting our return value
         let mut pressure = OrderedFloat(0.0);
@@ -105,13 +125,15 @@ impl<'a> Landlord<'a> {
 
         // Getting the normalized credit
         let norm_credit = min.1 / OrderedFloat(min.0.get_size() as f32);
-        self.cache.contents.iter().map(|a| a.1 - norm_credit);
+        let _ = self.cache.contents.iter().map(|a| a.1 - norm_credit);
         pressure += norm_credit;
 
         // Finding how many items of 0 credit there are now
+        // TODO: Find how many 0 credit items there are
+        // TODO: Create a loop or recursion to evict items until there is enough space.
 
         // Returning our pressure at the end
-        pressure
+        pressure + self.evict(size)
     }
     fn fault(&mut self, item: &'a Item) -> OrderedFloat<f32> {
         // If the cache has too many items, throw an error
