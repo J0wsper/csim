@@ -33,7 +33,7 @@ struct Cache<'a> {
 // Wrapper for the tiebreaking order
 #[derive(Debug)]
 struct Tiebreaker<'a> {
-    order: VecDeque<&'a Item>,
+    order: BTreeMap<&'a Item, u32>,
     policy: TiebreakingPolicy,
     len: usize,
     size: u32,
@@ -89,22 +89,29 @@ impl Item {
 }
 
 impl<'a> Landlord<'a> {
+    // Utility function to get the normalized credit of an item
+    fn norm_credit(item: (&&'a Item, &OrderedFloat<f32>)) -> OrderedFloat<f32> {
+        item.1 / OrderedFloat(item.0.get_size() as f32)
+    }
+
+    // Takes care of cleaning up our tiebreaking order
+    fn manage_tiebreak(&mut self, item: &Item) {
+        self.tiebreaker.order.remove(item);
+    }
+
     // TODO: Implement this
     fn hit(&mut self, item: &'a Item) -> OrderedFloat<f32> {
         OrderedFloat(0.0)
     }
 
     // Finding the element we want to evict in the case of a tie
-    fn tiebreak(&mut self) -> &'a Item {
-        let mut zeros = Vec::new();
-        for (item, cred) in self.cache.contents.iter() {
-            if *cred == 0.0 {
-                zeros.push(*item);
-            }
+    fn tiebreak(&mut self, zeros: Vec<&'a Item>) -> &'a Item {
+        if zeros.len() == 1 {
+            return zeros[0];
         }
         for cand in self.tiebreaker.order.iter().rev() {
-            if zeros.contains(cand) {
-                return cand;
+            if zeros.contains(cand.0) {
+                return cand.0;
             }
         }
         panic!("Tiebreaking order mismanagement");
@@ -115,26 +122,42 @@ impl<'a> Landlord<'a> {
         // Getting our return value
         let mut pressure = OrderedFloat(0.0);
 
-        // Getting the minimum credit item
-        let min = self
-            .cache
-            .contents
-            .iter()
-            .min_by_key(|a| a.1 / OrderedFloat(a.0.get_size() as f32))
-            .expect("Could not find minimum credit element");
+        // Base case
+        if self.cache.size as usize - self.cache.len >= size as usize {
+            return pressure;
+        }
 
-        // Getting the normalized credit
-        let norm_credit = min.1 / OrderedFloat(min.0.get_size() as f32);
-        let _ = self.cache.contents.iter().map(|a| a.1 - norm_credit);
-        pressure += norm_credit;
+        // Getting the normalized credit of the minimum credit item
+        let min = Landlord::norm_credit(
+            self.cache
+                .contents
+                .iter()
+                .min_by_key(|a| a.1 / OrderedFloat(a.0.get_size() as f32))
+                .expect("Could not find minimum credit element"),
+        );
+        let _ = self.cache.contents.iter().map(|a| a.1 - min);
+        pressure += min;
 
         // Finding how many items of 0 credit there are now
-        // TODO: Find how many 0 credit items there are
-        // TODO: Create a loop or recursion to evict items until there is enough space.
+        let mut zeros: Vec<&'_ Item> = Vec::new();
+        for item in self.cache.contents.iter() {
+            if *item.1 == OrderedFloat(0.0) {
+                zeros.push(*item.0);
+            }
+        }
+        // Letting our tiebreaking policy take care of choosing the evicted item
+        let evicted = self.tiebreak(zeros);
+        self.manage_tiebreak(evicted);
+
+        // Removing the item it picks
+        self.cache.contents.remove(evicted);
+        self.cache.len -= 1;
 
         // Returning our pressure at the end
         pressure + self.evict(size)
     }
+
+    // The function called whenever the Landlord implementation faults on a request
     fn fault(&mut self, item: &'a Item) -> OrderedFloat<f32> {
         // If the cache has too many items, throw an error
         if self.cache.len > self.cache.size as usize {
@@ -153,9 +176,9 @@ impl<'a> Landlord<'a> {
     }
     fn request(&mut self, item: &'a Item) -> OrderedFloat<f32> {
         if self.cache.contents.contains_key(&item) {
-            return self.hit(item);
+            self.hit(item)
         } else {
-            return self.fault(item);
+            self.fault(item)
         }
     }
 }
