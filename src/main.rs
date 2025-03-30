@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, VecDeque};
 use std::fs;
 
+pub mod cost;
+pub mod pressure;
+
 // STRUCTS
 // ----------------------------------------------------------------------------
 
@@ -210,7 +213,6 @@ impl<'a> Landlord<'a> {
 
     // Finding the element we want to evict in the case of a tie
     fn tiebreak(&mut self, zeros: Vec<&'a Item>) -> &'a Item {
-        dbg!(&zeros);
         if zeros.len() == 1 {
             return zeros[0];
         }
@@ -305,7 +307,6 @@ impl<'a> Landlord<'a> {
     fn run(&mut self, trace: VecDeque<&'a Item>) {
         for request in trace.iter() {
             self.request(request);
-            dbg!(&self);
         }
     }
 }
