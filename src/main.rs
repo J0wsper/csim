@@ -2,9 +2,7 @@ use ordered_float::OrderedFloat;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, VecDeque};
-use std::f32::NAN;
-use std::{env, fs};
-use toml::toml;
+use std::fs;
 
 // STRUCTS
 // ----------------------------------------------------------------------------
@@ -112,11 +110,13 @@ impl<'a> Landlord<'a> {
     }
 
     // NOTE: You need to implement this function if you want your custom hit policy to work
+    #[warn(unused_variables)]
     fn custom_hit(&mut self, item: &Item, old_cred: f32) -> OrderedFloat<f32> {
         todo!()
     }
 
     // NOTE: You need to implement this function if you want your custom tiebreaking policy to work
+    #[warn(unused_variables)]
     fn custom_tiebreak(&mut self, item: &Item) {
         todo!()
     }
@@ -146,8 +146,8 @@ impl<'a> Landlord<'a> {
         };
 
         // Assigning our new credit to the item
-        let mut assign_cred = self.cache.contents.get(label).unwrap();
-        assign_cred = &new_cred;
+        let mut _assign_cred = self.cache.contents.get(label).unwrap();
+        _assign_cred = &new_cred;
 
         // Move it around in tiebreaking order according to tiebreaking policy
         let index = self.get_tiebreaker_index(label);
@@ -242,6 +242,8 @@ impl<'a> Landlord<'a> {
             return self.evict(size);
         }
     }
+
+    // Handle our request
     fn request(&mut self, item: &'a Item) -> OrderedFloat<f32> {
         if self.cache.contents.contains_key(&item) {
             self.hit(item)
@@ -249,10 +251,32 @@ impl<'a> Landlord<'a> {
             self.fault(item)
         }
     }
+
+    // Run our Landlord implementation over the provided trace
+    fn run(&mut self, trace: VecDeque<&'a Item>) {
+        for request in trace.iter() {
+            self.request(request);
+        }
+    }
 }
 
-// IMPLEMENTING TRAITS
-// -----------------------------------------------------------------------------
+// Converts our deserialized trace of strings into a trace of items
+fn strings_to_items<'a>(trace: &'a TraceInfo) -> VecDeque<&'a Item> {
+    let mut requests = VecDeque::new();
+    let mut counter = 0;
+    for request in trace.trace.iter() {
+        for item in trace.items.iter() {
+            if *item.get_label() == *request {
+                requests.push_back(item);
+                counter += 1;
+            }
+        }
+    }
+    if counter as usize != trace.trace.len() {
+        panic!("Invalid trace generation");
+    }
+    requests
+}
 
 fn main() {
     let data: &str = &fs::read_to_string("items.toml").expect("Could not read file");
