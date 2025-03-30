@@ -1,0 +1,3 @@
+- It might be interesting to have a dynamic programming things that could tell you where to optimally split a request sequence into a prefix and suffix to maximize suffix competitive ratio. Gets some 382 content in there.
+
+- TODO:

@@ -1,6 +1,8 @@
 use ordered_float::OrderedFloat;
+use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, VecDeque};
+use std::f32::NAN;
 use std::{env, fs};
 use toml::toml;
 
@@ -33,7 +35,7 @@ struct Cache<'a> {
 // Wrapper for the tiebreaking order
 #[derive(Debug)]
 struct Tiebreaker<'a> {
-    order: BTreeMap<&'a Item, u32>,
+    order: VecDeque<&'a Item>,
     policy: TiebreakingPolicy,
     len: usize,
     size: u32,
@@ -48,7 +50,7 @@ enum HitPolicy {
     Fifo,
     Rand,
     Half,
-    Custom(fn(&mut Cache, &mut Tiebreaker, &Item)),
+    Custom,
 }
 
 #[derive(Debug)]
@@ -56,7 +58,7 @@ enum TiebreakingPolicy {
     Lru,
     Fifo,
     Rand,
-    Custom(fn(&mut Cache, &mut Tiebreaker, &Item)),
+    Custom,
 }
 
 #[derive(Debug)]
@@ -94,14 +96,80 @@ impl<'a> Landlord<'a> {
         item.1 / OrderedFloat(item.0.get_size() as f32)
     }
 
-    // Takes care of cleaning up our tiebreaking order
-    fn manage_tiebreak(&mut self, item: &Item) {
-        self.tiebreaker.order.remove(item);
+    // Gets the tiebreaking index of a particular item
+    fn get_tiebreaker_index(&self, item: &'a Item) -> usize {
+        self.tiebreaker
+            .order
+            .iter()
+            .position(|n| n == &item)
+            .expect("Item not found in vector")
     }
 
-    // TODO: Implement this
-    fn hit(&mut self, item: &'a Item) -> OrderedFloat<f32> {
-        OrderedFloat(0.0)
+    // Takes care of cleaning up our tiebreaking order
+    fn manage_tiebreak(&mut self, item: &Item) {
+        let index = self.get_tiebreaker_index(item);
+        self.tiebreaker.order.remove(index);
+    }
+
+    // NOTE: You need to implement this function if you want your custom hit policy to work
+    fn custom_hit(&mut self, item: &Item, old_cred: f32) -> OrderedFloat<f32> {
+        todo!()
+    }
+
+    // NOTE: You need to implement this function if you want your custom tiebreaking policy to work
+    fn custom_tiebreak(&mut self, item: &Item) {
+        todo!()
+    }
+
+    // Function called whenever Landlord hits on an item
+    // NOTE: This is where both the custom tiebreaking and hit policy are handled
+    fn hit(&mut self, label: &'a Item) -> OrderedFloat<f32> {
+        let old_cred = self
+            .cache
+            .contents
+            .get(label)
+            .expect("Could not find hit item")
+            .0;
+
+        // Getting rid of the bad NaN case
+        if old_cred.is_nan() {
+            panic!("NaN credit found");
+        }
+
+        // Refresh the requested item's credit according to hit policy
+        let new_cred = match &self.cache.policy {
+            HitPolicy::Lru => label.get_cost(),
+            HitPolicy::Fifo => OrderedFloat(old_cred),
+            HitPolicy::Rand => OrderedFloat(rand::rng().random_range(old_cred..label.get_cost().0)),
+            HitPolicy::Half => (label.get_cost() - old_cred) / 2.0,
+            HitPolicy::Custom => self.custom_hit(label, old_cred),
+        };
+
+        // Assigning our new credit to the item
+        let mut assign_cred = self.cache.contents.get(label).unwrap();
+        assign_cred = &new_cred;
+
+        // Move it around in tiebreaking order according to tiebreaking policy
+        let index = self.get_tiebreaker_index(label);
+        match self.tiebreaker.policy {
+            // Push the item to the back of the order
+            TiebreakingPolicy::Lru => {
+                self.tiebreaker.order.remove(index);
+                self.tiebreaker.order.push_back(label);
+            }
+            // Do nothing
+            TiebreakingPolicy::Fifo => {}
+            // Insert the item into a random slot in the tiebreaking order
+            TiebreakingPolicy::Rand => {
+                let k = self.tiebreaker.size;
+                let new_index = rand::rng().random_range(0..k - 1) as usize;
+                self.tiebreaker.order.remove(index);
+                self.tiebreaker.order.insert(new_index, label);
+            }
+            // Perform custom tiebreaking
+            TiebreakingPolicy::Custom => self.custom_tiebreak(label),
+        }
+        new_cred
     }
 
     // Finding the element we want to evict in the case of a tie
@@ -109,9 +177,9 @@ impl<'a> Landlord<'a> {
         if zeros.len() == 1 {
             return zeros[0];
         }
-        for cand in self.tiebreaker.order.iter().rev() {
-            if zeros.contains(cand.0) {
-                return cand.0;
+        for cand in self.tiebreaker.order.iter() {
+            if zeros.contains(cand) {
+                return cand;
             }
         }
         panic!("Tiebreaking order mismanagement");
