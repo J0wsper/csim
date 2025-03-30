@@ -69,12 +69,8 @@ struct Landlord<'a> {
 // -----------------------------------------------------------------------------
 
 impl Item {
-    fn new(_label: String, _cost: u32, _size: u32) -> Self {
-        Item {
-            label: _label,
-            cost: _cost,
-            size: _size,
-        }
+    fn new(label: String, cost: u32, size: u32) -> Self {
+        Item { label, cost, size }
     }
     fn get_label(&self) -> &String {
         &self.label
@@ -89,6 +85,27 @@ impl Item {
 }
 
 impl<'a> Landlord<'a> {
+    fn new(size: u32, tiebreak_policy: TiebreakingPolicy, hit_policy: HitPolicy) -> Self {
+        Self {
+            cache: {
+                Cache {
+                    contents: BTreeMap::new(),
+                    policy: hit_policy,
+                    len: 0,
+                    size,
+                }
+            },
+            tiebreaker: {
+                Tiebreaker {
+                    order: VecDeque::new(),
+                    policy: tiebreak_policy,
+                    len: 0,
+                    size,
+                }
+            },
+        }
+    }
+
     // Utility function to get the normalized credit of an item
     fn norm_credit(item: (&&'a Item, &OrderedFloat<f32>)) -> OrderedFloat<f32> {
         item.1 / OrderedFloat(item.0.get_size() as f32)
@@ -280,6 +297,8 @@ fn strings_to_items<'a>(trace: &'a TraceInfo) -> VecDeque<&'a Item> {
 
 fn main() {
     let data: &str = &fs::read_to_string("items.toml").expect("Could not read file");
-    let test: TraceInfo = toml::from_str(data).expect("Could not convert TOML file");
-    dbg!(test);
+    let raw_trace: TraceInfo = toml::from_str(data).expect("Could not convert TOML file");
+    let item_trace = strings_to_items(&raw_trace);
+    let mut lru_landlord = Landlord::new(5, TiebreakingPolicy::Lru, HitPolicy::Lru);
+    lru_landlord.run(item_trace);
 }

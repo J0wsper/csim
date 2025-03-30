@@ -1,3 +1,6 @@
-- It might be interesting to have a dynamic programming things that could tell you where to optimally split a request sequence into a prefix and suffix to maximize suffix competitive ratio. Gets some 382 content in there.
+  - It might be interesting to have a dynamic programming things that could tell you where to optimally split a request sequence into a prefix and suffix to maximize suffix competitive ratio. Gets some 382 content in there.
 
-- TODO:
+* TODO:
+    - ( ) Landlord should be its own struct that contains a Cache struct and a Tiebreaker struct.
+    - ( ) The Tiebreaker struct should contain a VecDeque of references to Items, a TiebreakingPolicy enum and a size.
+    - ( ) The  
