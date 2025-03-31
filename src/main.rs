@@ -1,4 +1,6 @@
+use cost::CostTracker;
 use ordered_float::OrderedFloat;
+use pressure::PressureTracker;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, VecDeque};
@@ -9,6 +11,12 @@ pub mod pressure;
 
 // STRUCTS
 // ----------------------------------------------------------------------------
+
+#[derive(Debug)]
+enum RequestResult {
+    Hit,
+    Fault(f32),
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TraceInfo {
@@ -291,22 +299,53 @@ impl<'a> Landlord<'a> {
     }
 
     // Handle our request
-    fn request(&mut self, item: &'a Item) -> OrderedFloat<f32> {
+    fn request(&mut self, item: &'a Item) -> RequestResult {
         if self.cache.contents.contains_key(&item) {
             self.hit(item);
             self.update_tiebreak(item);
-            OrderedFloat(0.0)
+            RequestResult::Hit
         } else {
             let pressure = self.fault(item);
             self.update_tiebreak(item);
-            pressure
+            RequestResult::Fault(*pressure)
         }
     }
 
     // Run our Landlord implementation over the provided trace
-    fn run(&mut self, trace: VecDeque<&'a Item>) {
+    fn run(
+        trace: VecDeque<&'a Item>,
+        suffix_start: u32,
+        mut s: Landlord<'a>,
+        mut f: Landlord<'a>,
+        mut cost_tracker: CostTracker,
+        mut pressure_tracker: PressureTracker,
+    ) {
+        let pref_trace = trace.range(..suffix_start as usize);
+        let suff_trace = trace.range(suffix_start as usize..);
         for request in trace.iter() {
-            self.request(request);
+            let res = f.request(request);
+            match res {
+                RequestResult::Hit => {
+                    cost_tracker.log(request, cost::RequestFullOrSuffix::Full(true));
+                }
+                RequestResult::Fault(pressure) => {
+                    cost_tracker.log(request, cost::RequestFullOrSuffix::Full(false));
+                }
+            }
+        }
+        for request in pref_trace {
+            cost_tracker.log(request, cost::RequestFullOrSuffix::Suff(true));
+        }
+        for request in suff_trace {
+            let res = s.request(request);
+            match res {
+                RequestResult::Hit => {
+                    cost_tracker.log(request, cost::RequestFullOrSuffix::Suff(true));
+                }
+                RequestResult::Fault(pressure) => {
+                    cost_tracker.log(request, cost::RequestFullOrSuffix::Suff(false));
+                }
+            }
         }
     }
 }
@@ -333,6 +372,9 @@ fn main() {
     let data: &str = &fs::read_to_string("items.toml").expect("Could not read file");
     let raw_trace: TraceInfo = toml::from_str(data).expect("Could not convert TOML file");
     let item_trace = strings_to_items(&raw_trace);
-    let mut lru_landlord = Landlord::new(15, TiebreakingPolicy::Lru, HitPolicy::Lru);
-    lru_landlord.run(item_trace);
+    let s = Landlord::new(15, TiebreakingPolicy::Lru, HitPolicy::Lru);
+    let f = Landlord::new(15, TiebreakingPolicy::Lru, HitPolicy::Lru);
+    let cost_tracker = CostTracker::new();
+    let pressure_tracker = PressureTracker::new();
+    Landlord::run(item_trace, 2, s, f, cost_tracker, pressure_tracker);
 }
