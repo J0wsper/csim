@@ -374,7 +374,7 @@ fn main() {
     let item_trace = strings_to_items(&raw_trace);
     let s = Landlord::new(15, TiebreakingPolicy::Lru, HitPolicy::Lru);
     let f = Landlord::new(15, TiebreakingPolicy::Lru, HitPolicy::Lru);
-    let cost_tracker = CostTracker::new();
+    let cost_tracker = CostTracker::new(&item_trace);
     let pressure_tracker = PressureTracker::new();
     Landlord::run(item_trace, 2, s, f, cost_tracker, pressure_tracker);
 }

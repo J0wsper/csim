@@ -12,11 +12,27 @@ struct IndScr<'a> {
     suff_costs: BTreeMap<&'a Item, VecDeque<u32>>,
 }
 
-impl IndScr<'_> {
-    fn new() -> Self {
+impl<'a> IndScr<'a> {
+    fn new(trace: &VecDeque<&'a Item>) -> Self {
         Self {
-            full_costs: BTreeMap::new(),
-            suff_costs: BTreeMap::new(),
+            full_costs: {
+                let mut map = BTreeMap::new();
+                for request in trace {
+                    if !map.contains_key(request) {
+                        map.insert(*request, VecDeque::new());
+                    }
+                }
+                map
+            },
+            suff_costs: {
+                let mut map = BTreeMap::new();
+                for request in trace {
+                    if !map.contains_key(request) {
+                        map.insert(*request, VecDeque::new());
+                    }
+                }
+                map
+            },
         }
     }
 }
@@ -27,12 +43,12 @@ pub struct CostTracker<'a> {
     ind_scr: IndScr<'a>,
 }
 
-impl CostTracker<'_> {
-    pub fn new() -> Self {
+impl<'a> CostTracker<'a> {
+    pub fn new(trace: &VecDeque<&'a Item>) -> Self {
         Self {
             full_cost: VecDeque::new(),
             suff_cost: VecDeque::new(),
-            ind_scr: IndScr::new(),
+            ind_scr: IndScr::new(trace),
         }
     }
     pub fn get_full_cost(&self, index: u32) -> u32 {
@@ -63,12 +79,12 @@ impl CostTracker<'_> {
             suff_cost_sum as f32 / full_cost_sum as f32
         }
     }
-    pub fn get_ind_scr(&self, index: u32, item: &Item) -> f32 {
+    pub fn get_ind_scr(&self, index: u32, item: &'a Item) -> f32 {
         let item_suff_costs = self
             .ind_scr
-            .suff_costs
+            .full_costs
             .get(item)
-            .expect("Could not find item in suffix costs for individual SCR logging")
+            .expect("Could not find item in full costs for indindividual SCR logging")
             .range(0..index as usize)
             .sum::<u32>();
         let item_full_costs = self
