@@ -13,20 +13,20 @@ pub mod pressure;
 // ----------------------------------------------------------------------------
 
 #[derive(Debug)]
-enum RequestResult {
+pub enum RequestResult {
     Hit,
     Fault(f32),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct TraceInfo {
+pub struct TraceInfo {
     items: Vec<Item>,
     trace: Vec<String>,
 }
 
 // These are the keys for our cache map
 #[derive(Debug, PartialOrd, PartialEq, Eq, Ord, Serialize, Deserialize)]
-struct Item {
+pub struct Item {
     label: String,
     cost: u32,
     size: u32,
@@ -55,7 +55,7 @@ struct Tiebreaker<'a> {
 // you don't need to keep the name 'custom'.
 #[derive(Debug)]
 #[warn(dead_code)]
-enum HitPolicy {
+pub enum HitPolicy {
     Lru,
     Fifo,
     Rand,
@@ -65,7 +65,7 @@ enum HitPolicy {
 
 #[derive(Debug)]
 #[warn(dead_code)]
-enum TiebreakingPolicy {
+pub enum TiebreakingPolicy {
     Lru,
     Fifo,
     Rand,
@@ -73,7 +73,7 @@ enum TiebreakingPolicy {
 }
 
 #[derive(Debug)]
-struct Landlord<'a> {
+pub struct Landlord<'a> {
     cache: Cache<'a>,
     tiebreaker: Tiebreaker<'a>,
 }
@@ -95,7 +95,7 @@ impl Item {
 }
 
 impl<'a> Landlord<'a> {
-    fn new(size: u32, tiebreak_policy: TiebreakingPolicy, hit_policy: HitPolicy) -> Self {
+    pub fn new(size: u32, tiebreak_policy: TiebreakingPolicy, hit_policy: HitPolicy) -> Self {
         Self {
             cache: {
                 Cache {
@@ -117,7 +117,7 @@ impl<'a> Landlord<'a> {
     }
 
     // Utility function to get the normalized credit of an item
-    fn norm_credit(item: (&&'a Item, &OrderedFloat<f32>)) -> OrderedFloat<f32> {
+    pub fn norm_credit(item: (&&'a Item, &OrderedFloat<f32>)) -> OrderedFloat<f32> {
         item.1 / OrderedFloat(item.0.get_size() as f32)
     }
 
@@ -299,7 +299,7 @@ impl<'a> Landlord<'a> {
     }
 
     // Handle our request
-    fn request(&mut self, item: &'a Item) -> RequestResult {
+    pub fn request(&mut self, item: &'a Item) -> RequestResult {
         if self.cache.contents.contains_key(&item) {
             self.hit(item);
             self.update_tiebreak(item);
@@ -312,7 +312,7 @@ impl<'a> Landlord<'a> {
     }
 
     // Run our Landlord implementation over the provided trace
-    fn run(
+    pub fn run(
         trace: VecDeque<&'a Item>,
         suffix_start: u32,
         mut s: Landlord<'a>,
