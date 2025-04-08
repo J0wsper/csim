@@ -1,13 +1,11 @@
-use cost::CostTracker;
+use logger::Tracker;
 use ordered_float::OrderedFloat;
-use pressure::PressureTracker;
 use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, VecDeque};
 use std::fs;
 
-pub mod cost;
-pub mod pressure;
+pub mod logger;
 
 // STRUCTS
 // ----------------------------------------------------------------------------
@@ -19,6 +17,12 @@ pub mod pressure;
 pub enum RequestResult {
     Hit,
     Fault(f32),
+}
+
+// True means hit, false means fault.
+pub enum RequestFullOrSuffix {
+    Full(bool),
+    Suff(bool),
 }
 
 // This is the data structure that serde will deserialize the items.toml file into. The items must
@@ -315,7 +319,6 @@ impl<'a> Landlord<'a> {
 
     // Handle our request
     pub fn request(&mut self, item: &'a Item) -> RequestResult {
-        dbg!(&self);
         // If our cache contains the requested item, we have a hit!
         if self.cache.contents.contains_key(&item) {
             // We hit on that item, updating its credit according to hit policy.
@@ -342,8 +345,7 @@ impl<'a> Landlord<'a> {
         suffix_start: u32,
         mut s: Landlord<'a>,
         mut f: Landlord<'a>,
-        mut cost_tracker: CostTracker,
-        mut pressure_tracker: PressureTracker,
+        mut tracker: Tracker,
     ) {
         // For each request in our trace
         for (i, request) in trace.iter().enumerate() {
@@ -355,18 +357,21 @@ impl<'a> Landlord<'a> {
                 // If it is a hit, we log that the request was a hit with our cost logger and
                 // pressure logger.
                 RequestResult::Hit => {
-                    cost_tracker.log(request, cost::RequestFullOrSuffix::Full(true));
+                    tracker.log_cost(request, RequestFullOrSuffix::Full(true));
+                    tracker.log_pres(0.0, RequestFullOrSuffix::Full(true));
                 }
-                // If the request was a hi, we log that the full trace cache paid that item's cost
+                // If the request was a hi, we log_cost that the full trace cache paid that item's cost
                 // and that the pressure went up by whatever amount we wrapped in RequestResult.
                 RequestResult::Fault(pressure) => {
-                    cost_tracker.log(request, cost::RequestFullOrSuffix::Full(false));
+                    tracker.log_cost(request, RequestFullOrSuffix::Full(false));
+                    tracker.log_pres(pressure, RequestFullOrSuffix::Full(false));
                 }
             }
             // If we are not in the suffix yet, we are going to say that S simply paid no cost.
             // This is relevant for when we calculate individual suffix competitive ratios later.
             if i < suffix_start as usize {
-                cost_tracker.log(request, cost::RequestFullOrSuffix::Suff(true));
+                tracker.log_cost(request, RequestFullOrSuffix::Suff(true));
+                tracker.log_pres(0.0, RequestFullOrSuffix::Suff(true));
                 continue;
             }
             let res = s.request(request);
@@ -374,10 +379,12 @@ impl<'a> Landlord<'a> {
             // request results are for suff instead.
             match res {
                 RequestResult::Hit => {
-                    cost_tracker.log(request, cost::RequestFullOrSuffix::Suff(true));
+                    tracker.log_cost(request, RequestFullOrSuffix::Suff(true));
+                    tracker.log_pres(0.0, RequestFullOrSuffix::Suff(true));
                 }
                 RequestResult::Fault(pressure) => {
-                    cost_tracker.log(request, cost::RequestFullOrSuffix::Suff(false));
+                    tracker.log_cost(request, RequestFullOrSuffix::Suff(false));
+                    tracker.log_pres(pressure, RequestFullOrSuffix::Suff(false));
                 }
             }
         }
@@ -408,7 +415,6 @@ fn main() {
     let item_trace = strings_to_items(&raw_trace);
     let s = Landlord::new(15, TiebreakingPolicy::Lru, HitPolicy::Lru);
     let f = Landlord::new(15, TiebreakingPolicy::Lru, HitPolicy::Lru);
-    let cost_tracker = CostTracker::new(&item_trace);
-    let pressure_tracker = PressureTracker::new();
-    Landlord::run(item_trace, 2, s, f, cost_tracker, pressure_tracker);
+    let tracker = Tracker::new(&item_trace);
+    Landlord::run(item_trace, 2, s, f, tracker);
 }

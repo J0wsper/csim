@@ -1,13 +1,8 @@
 use crate::Item;
+use crate::RequestFullOrSuffix;
 use std::collections::{BTreeMap, VecDeque};
 
-// True means hit, false means fault.
-pub enum RequestFullOrSuffix {
-    Full(bool),
-    Suff(bool),
-}
-
-struct IndScr<'a> {
+pub struct IndScr<'a> {
     full_costs: BTreeMap<&'a Item, VecDeque<u32>>,
     suff_costs: BTreeMap<&'a Item, VecDeque<u32>>,
 }
@@ -37,17 +32,21 @@ impl<'a> IndScr<'a> {
     }
 }
 
-pub struct CostTracker<'a> {
+pub struct Tracker<'a> {
     full_cost: VecDeque<u32>,
+    full_pres: VecDeque<f32>,
     suff_cost: VecDeque<u32>,
+    suff_pres: VecDeque<f32>,
     ind_scr: IndScr<'a>,
 }
 
-impl<'a> CostTracker<'a> {
+impl<'a> Tracker<'a> {
     pub fn new(trace: &VecDeque<&'a Item>) -> Self {
         Self {
             full_cost: VecDeque::new(),
+            full_pres: VecDeque::new(),
             suff_cost: VecDeque::new(),
+            suff_pres: VecDeque::new(),
             ind_scr: IndScr::new(trace),
         }
     }
@@ -99,7 +98,7 @@ impl<'a> CostTracker<'a> {
         }
         item_suff_costs as f32 / item_full_costs as f32
     }
-    pub fn log(&mut self, item: &Item, request_type: RequestFullOrSuffix) {
+    pub fn log_cost(&mut self, item: &Item, request_type: RequestFullOrSuffix) {
         let cost = item.get_cost().0 as u32;
         match request_type {
             RequestFullOrSuffix::Full(is_hit) => {
@@ -128,6 +127,25 @@ impl<'a> CostTracker<'a> {
                 } else {
                     self.suff_cost.push_back(cost);
                     item_costs.push_back(cost);
+                }
+            }
+        }
+    }
+    // Much simpler than the cost logging.
+    pub fn log_pres(&mut self, pressure: f32, request_type: RequestFullOrSuffix) {
+        match request_type {
+            RequestFullOrSuffix::Full(is_hit) => {
+                if is_hit {
+                    self.full_pres.push_back(0.0);
+                } else {
+                    self.full_pres.push_back(pressure);
+                }
+            }
+            RequestFullOrSuffix::Suff(is_hit) => {
+                if is_hit {
+                    self.suff_pres.push_back(0.0);
+                } else {
+                    self.suff_pres.push_back(pressure);
                 }
             }
         }
