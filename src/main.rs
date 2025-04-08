@@ -1,8 +1,18 @@
+// Clap is the command line parser
+use clap::Parser;
+// We need to include the logger to do cost and pressure logging
 use logger::Tracker;
+// We need ordered floats to keep them properly in our cache map
 use ordered_float::OrderedFloat;
+// Rand is required for the rand hit/tiebreaking policy
 use rand::prelude::*;
+// Serde is required for serializing cost/pressure information and deserializing trace information.
 use serde::{Deserialize, Serialize};
+// Standard collections
 use std::collections::{BTreeMap, VecDeque};
+use std::path::PathBuf;
+// File system is required to actually read and write toml files. Env is required to read command
+// line arguments.
 use std::fs;
 
 pub mod logger;
@@ -23,6 +33,32 @@ pub enum RequestResult {
 pub enum RequestFullOrSuffix {
     Full(bool),
     Suff(bool),
+}
+
+#[derive(Parser, Debug)]
+#[command(name = "csim")]
+#[command(version = "1.0")]
+#[command(about = "A simple cache simulator for the Landlord cache replacement policy")]
+pub struct Args {
+    /// The path to the input TOML file
+    #[arg(short, long, value_name = "INPUT FILE")]
+    in_path: PathBuf,
+
+    /// The path to the TOML file we are saving to
+    #[arg(short, long, value_name = "OUTPUT FILE")]
+    out_path: String,
+
+    /// The size of the caches we are running
+    #[arg(short, long, value_name = "CACHE SIZE")]
+    size: u32,
+
+    /// The location in our trace where we should split prefix from suffix
+    #[arg(short, long, value_name = "PREFIX/SUFFIX DIVISION")]
+    div: u32,
+
+    /// The hit and tiebreaking policies for our caches
+    #[arg(short, long, num_args = 2, value_name = "HIT/TIEBREAKING POLICY")]
+    policies: Vec<String>,
 }
 
 // This is the data structure that serde will deserialize the items.toml file into. The items must
@@ -76,8 +112,7 @@ struct Tiebreaker<'a> {
 // Hit policies. The first four have a default behavior implemented. Any after that will then defer
 // the hit policy to whatever function you decide to assign to the enum. This can be anything and
 // you don't need to keep the name 'custom'.
-#[derive(Debug)]
-#[warn(dead_code)]
+#[derive(Debug, Clone, Copy)]
 pub enum HitPolicy {
     Lru,
     Fifo,
@@ -88,8 +123,7 @@ pub enum HitPolicy {
 // Tiebreaking policies. The first four have a default behavior implemented. Any after that will
 // then defer the hit policy to whatever function you decide to assign to the enum. This can be
 // anything and you don't need to keep the name 'custom'.
-#[derive(Debug)]
-#[warn(dead_code)]
+#[derive(Debug, Clone, Copy)]
 pub enum TiebreakingPolicy {
     Lru,
     Fifo,
@@ -158,6 +192,7 @@ impl<'a> Landlord<'a> {
     fn manage_tiebreak(&mut self, item: &Item) {
         if let Some(index) = self.get_tiebreaker_index(item) {
             self.tiebreaker.order.remove(index);
+            // TODO: This can cause subtraction with underflow
             self.tiebreaker.occupied -= item.get_size();
         }
     }
@@ -319,6 +354,7 @@ impl<'a> Landlord<'a> {
 
     // Handle our request
     pub fn request(&mut self, item: &'a Item) -> RequestResult {
+        dbg!(&self);
         // If our cache contains the requested item, we have a hit!
         if self.cache.contents.contains_key(&item) {
             // We hit on that item, updating its credit according to hit policy.
@@ -339,7 +375,10 @@ impl<'a> Landlord<'a> {
         }
     }
 
-    // Run our Landlord implementation over the provided trace
+    // Run our Landlord implementation over the provided trace. Trace is the trace you would like
+    // the two landlord implementations to service, suffix_start is the point at which you want to
+    // split the trace into prefix and suffix (exclusive of endpoints) and the tracker is what
+    // keeps track of costs and pressure.
     pub fn run(
         trace: VecDeque<&'a Item>,
         suffix_start: u32,
@@ -410,11 +449,41 @@ fn strings_to_items(trace: &TraceInfo) -> VecDeque<&Item> {
 }
 
 fn main() {
-    let data: &str = &fs::read_to_string("items.toml").expect("Could not read file");
+    let args = Args::parse();
+    // Parsing our data into a string
+    let data: &str = &fs::read_to_string(args.in_path).expect("Could not read file");
+    // Converting our string into a trace struct with the TOML crate
     let raw_trace: TraceInfo = toml::from_str(data).expect("Could not convert TOML file");
+    // Converting strings into items with our utility function
     let item_trace = strings_to_items(&raw_trace);
-    let s = Landlord::new(15, TiebreakingPolicy::Lru, HitPolicy::Lru);
-    let f = Landlord::new(15, TiebreakingPolicy::Lru, HitPolicy::Lru);
+    // Creating our two caches
+    if args.policies.len() > 2 {
+        println!("Could not parse policy input");
+        return;
+    }
+    let hit_policy = match args.policies[0].to_ascii_uppercase().as_str() {
+        "LRU" => HitPolicy::Lru,
+        "FIFO" => HitPolicy::Fifo,
+        "RAND" => HitPolicy::Rand,
+        "HALF" => HitPolicy::Half,
+        _ => {
+            println!("Invalid hit policy; select one of: {{LRU, FIFO, RAND, HALF}}");
+            return;
+        }
+    };
+    let tiebreaking_policy = match args.policies[1].to_ascii_uppercase().as_str() {
+        "LRU" => TiebreakingPolicy::Lru,
+        "FIFO" => TiebreakingPolicy::Fifo,
+        "RAND" => TiebreakingPolicy::Rand,
+        _ => {
+            println!("Invalid tiebreaking policy; select one of: {{LRU, FIFO, RAND}}");
+            return;
+        }
+    };
+    let s = Landlord::new(args.size, tiebreaking_policy, hit_policy);
+    let f = Landlord::new(args.size, tiebreaking_policy, hit_policy);
+    // Creating our tracker
     let tracker = Tracker::new(&item_trace);
-    Landlord::run(item_trace, 2, s, f, tracker);
+    // Running the caches on our trace with the tracker
+    Landlord::run(item_trace, args.div, s, f, tracker);
 }

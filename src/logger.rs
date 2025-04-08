@@ -1,7 +1,9 @@
 use crate::Item;
 use crate::RequestFullOrSuffix;
+use serde::Serialize;
 use std::collections::{BTreeMap, VecDeque};
 
+#[derive(Debug, Serialize)]
 pub struct IndScr<'a> {
     full_costs: BTreeMap<&'a Item, VecDeque<u32>>,
     suff_costs: BTreeMap<&'a Item, VecDeque<u32>>,
@@ -32,6 +34,7 @@ impl<'a> IndScr<'a> {
     }
 }
 
+#[derive(Debug, Serialize)]
 pub struct Tracker<'a> {
     full_cost: VecDeque<u32>,
     full_pres: VecDeque<f32>,
@@ -41,6 +44,7 @@ pub struct Tracker<'a> {
 }
 
 impl<'a> Tracker<'a> {
+    // Creates a new tracker instance
     pub fn new(trace: &VecDeque<&'a Item>) -> Self {
         Self {
             full_cost: VecDeque::new(),
@@ -50,24 +54,29 @@ impl<'a> Tracker<'a> {
             ind_scr: IndScr::new(trace),
         }
     }
+    /// Gets the cost that the full cache paid at a particular point in the trace.
     pub fn get_full_cost(&self, index: u32) -> u32 {
         *self
             .full_cost
             .get(index as usize)
             .expect("Full cost index out of bounds")
     }
+    /// Gets the cost that the full cache paid from the start of the trace to the specified index.
     pub fn get_full_cost_range(&self, index: u32) -> u32 {
         self.full_cost.range(0..index as usize).sum::<u32>()
     }
+    /// Gets the cost that the suffix cache paid from the start of the trace to the specified index.
     pub fn get_suff_cost_range(&self, index: u32) -> u32 {
         self.suff_cost.range(0..index as usize).sum::<u32>()
     }
+    /// Gets the cost that the suffix cache paid at a particular point in the trace.
     pub fn get_suff_cost(&self, index: u32) -> u32 {
         *self
             .suff_cost
             .get(index as usize)
             .expect("Suffix index out of bounds")
     }
+    /// Gets the suffix competitive ratio at a particular index.
     pub fn get_scr(&self, index: u32) -> f32 {
         if self.full_cost.is_empty() {
             0.0
@@ -78,6 +87,7 @@ impl<'a> Tracker<'a> {
             suff_cost_sum as f32 / full_cost_sum as f32
         }
     }
+    /// Gets the individual suffix competitive ratio for the specified item at a particular index.
     pub fn get_ind_scr(&self, index: u32, item: &'a Item) -> f32 {
         let item_suff_costs = self
             .ind_scr
@@ -98,6 +108,7 @@ impl<'a> Tracker<'a> {
         }
         item_suff_costs as f32 / item_full_costs as f32
     }
+    /// Logs the cost of a particular item at a particular request
     pub fn log_cost(&mut self, item: &Item, request_type: RequestFullOrSuffix) {
         let cost = item.get_cost().0 as u32;
         match request_type {
@@ -131,7 +142,8 @@ impl<'a> Tracker<'a> {
             }
         }
     }
-    // Much simpler than the cost logging.
+    // Logging for pressure. Much simpler than the cost logging because we do not have to be
+    // worried about keeping track of indiviual suffix competitive ratios.
     pub fn log_pres(&mut self, pressure: f32, request_type: RequestFullOrSuffix) {
         match request_type {
             RequestFullOrSuffix::Full(is_hit) => {
