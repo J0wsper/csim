@@ -1,7 +1,7 @@
 // Clap is the command line parser
 use clap::Parser;
 // We need to include the logger to do cost and pressure logging
-use logger::Tracker;
+use logger::{PrettyTracker, Tracker};
 // We need ordered floats to keep them properly in our cache map
 use ordered_float::OrderedFloat;
 // Rand is required for the rand hit/tiebreaking policy
@@ -487,7 +487,8 @@ fn main() {
     let mut tracker = Tracker::new(&item_trace);
     // Running the caches on our trace with the tracker
     Landlord::run(item_trace, args.div, s, f, &mut tracker);
-    let output = tracker.ser_logger();
+    let display = PrettyTracker::new(tracker);
+    let output = display.ser_logger();
     let out_file = File::create(args.out_path);
     if out_file.is_err() {
         println!("Output file path already taken.");

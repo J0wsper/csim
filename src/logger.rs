@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::collections::{BTreeMap, VecDeque};
 
 /// Struct that stores the individual suffix competitive ratio of our items.
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub struct IndScr {
     // We store the labels of items instead of references to the items for ease of deserialization.
     full_costs: BTreeMap<String, VecDeque<u32>>,
@@ -36,7 +36,7 @@ impl IndScr {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub struct Tracker {
     full_cost: VecDeque<u32>,
     suff_cost: VecDeque<u32>,
@@ -164,8 +164,42 @@ impl Tracker {
             }
         }
     }
-    /// Creates a string that is the TOML serialized version of this logger instance.
+}
+
+#[derive(Debug, Serialize)]
+pub struct PrettyTracker {
+    full_costs: VecDeque<u32>,
+    suff_costs: VecDeque<u32>,
+    full_pres: VecDeque<f32>,
+    suff_pres: VecDeque<f32>,
+    ind_scr: BTreeMap<String, f32>,
+}
+
+impl PrettyTracker {
+    pub fn new(tracker: Tracker) -> Self {
+        Self {
+            full_costs: tracker.full_cost,
+            suff_costs: tracker.suff_cost,
+            full_pres: tracker.full_pres,
+            suff_pres: tracker.suff_pres,
+            ind_scr: {
+                let mut ind_scrs = BTreeMap::new();
+                for label in tracker.ind_scr.suff_costs.iter() {
+                    let full_costs = tracker.ind_scr.full_costs.get(label.0).unwrap();
+                    let full_costs_sum: u32 = full_costs.iter().sum();
+                    if full_costs_sum == 0 {
+                        ind_scrs.insert(label.0.to_string(), 0.0);
+                    } else {
+                        let suff_costs_sum: u32 = label.1.iter().sum();
+                        let ind_scr = suff_costs_sum as f32 / full_costs_sum as f32;
+                        ind_scrs.insert(label.0.to_string(), ind_scr);
+                    }
+                }
+                ind_scrs
+            },
+        }
+    }
     pub fn ser_logger(&self) -> String {
-        toml::to_string(&self).unwrap()
+        toml::to_string(self).unwrap()
     }
 }
