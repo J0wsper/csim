@@ -1,5 +1,5 @@
+use crate::landlord::RequestFullOrSuffix;
 use crate::Item;
-use crate::RequestFullOrSuffix;
 use serde::Serialize;
 use std::collections::{BTreeMap, VecDeque};
 
@@ -17,8 +17,8 @@ impl IndScr {
             full_costs: {
                 let mut map = BTreeMap::new();
                 for request in trace {
-                    if !map.contains_key(&request.label) {
-                        map.insert(request.label.clone(), VecDeque::new());
+                    if !map.contains_key(request.get_label()) {
+                        map.insert(request.get_label().clone(), VecDeque::new());
                     }
                 }
                 map
@@ -26,8 +26,8 @@ impl IndScr {
             suff_costs: {
                 let mut map = BTreeMap::new();
                 for request in trace {
-                    if !map.contains_key(&request.label) {
-                        map.insert(request.label.clone(), VecDeque::new());
+                    if !map.contains_key(request.get_label()) {
+                        map.insert(request.get_label().clone(), VecDeque::new());
                     }
                 }
                 map
@@ -94,14 +94,14 @@ impl Tracker {
         let item_suff_costs = self
             .ind_scr
             .full_costs
-            .get(&item.label)
+            .get(item.get_label())
             .expect("Could not find item in full costs for indindividual SCR logging")
             .range(0..index as usize)
             .sum::<u32>();
         let item_full_costs = self
             .ind_scr
             .full_costs
-            .get(&item.label)
+            .get(item.get_label())
             .expect("Could not find item in full costs for indindividual SCR logging")
             .range(0..index as usize)
             .sum::<u32>();
@@ -118,7 +118,7 @@ impl Tracker {
                 let item_costs = self
                     .ind_scr
                     .full_costs
-                    .get_mut(&item.label)
+                    .get_mut(item.get_label())
                     .expect("Could not find item in full costs for individual SCR logging");
                 if is_hit {
                     self.full_cost.push_back(0);
@@ -132,7 +132,7 @@ impl Tracker {
                 let item_costs = self
                     .ind_scr
                     .suff_costs
-                    .get_mut(&item.label)
+                    .get_mut(item.get_label())
                     .expect("Could not find item in full costs for individual SCR logging");
                 if is_hit {
                     self.suff_cost.push_back(0);
