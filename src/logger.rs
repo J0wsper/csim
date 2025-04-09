@@ -200,6 +200,6 @@ impl PrettyTracker {
         }
     }
     pub fn ser_logger(&self) -> String {
-        toml::to_string(self).unwrap()
+        toml::to_string_pretty(self).unwrap()
     }
 }

@@ -349,6 +349,8 @@ impl<'a> Landlord<'a> {
             let pressure = self.evict(size);
             // We insert our item into cache at full credit.
             self.cache.contents.insert(item, item.get_cost());
+            self.cache.occupied += item.get_size();
+            self.tiebreaker.occupied += item.get_size();
             pressure
         }
     }
@@ -455,6 +457,18 @@ fn main() {
     let data: &str = &fs::read_to_string(args.in_path).expect("Could not read file");
     // Converting our string into a trace struct with the TOML crate
     let raw_trace: TraceInfo = toml::from_str(data).expect("Could not convert TOML file");
+    // Performing some input sanitzation to ensure we don't have any items too large to accomodate
+    for item in raw_trace.items.iter() {
+        if item.get_size() > args.size {
+            println!(
+                "Item {} has size {} exceeding cache size of {}",
+                item.get_label(),
+                item.get_size(),
+                args.size
+            );
+            return;
+        }
+    }
     // Converting strings into items with our utility function
     let item_trace = strings_to_items(&raw_trace);
     // Creating our two caches
@@ -462,6 +476,7 @@ fn main() {
         println!("Could not parse policy input");
         return;
     }
+    // Generating our hit policy from the input
     let hit_policy = match args.policies[0].to_ascii_uppercase().as_str() {
         "LRU" => HitPolicy::Lru,
         "FIFO" => HitPolicy::Fifo,
@@ -472,6 +487,7 @@ fn main() {
             return;
         }
     };
+    // Generating our tiebreaking policy from the input
     let tiebreaking_policy = match args.policies[1].to_ascii_uppercase().as_str() {
         "LRU" => TiebreakingPolicy::Lru,
         "FIFO" => TiebreakingPolicy::Fifo,
@@ -481,19 +497,26 @@ fn main() {
             return;
         }
     };
+    // Creating our Landlord instances
     let s = Landlord::new(args.size, tiebreaking_policy, hit_policy);
     let f = Landlord::new(args.size, tiebreaking_policy, hit_policy);
     // Creating our tracker
     let mut tracker = Tracker::new(&item_trace);
     // Running the caches on our trace with the tracker
     Landlord::run(item_trace, args.div, s, f, &mut tracker);
+    // Creating a pretty tracker instance for serialization
     let display = PrettyTracker::new(tracker);
+    // Serializing our pretty tracker into a string
     let output = display.ser_logger();
+    // Creating the output file
     let out_file = File::create(args.out_path);
+    // If we get an error, the output path was already taken or we do not have permission.
     if out_file.is_err() {
         println!("Output file path already taken.");
         return;
     }
+    // Unwrapping the file if we passed the error testing.
     let mut out_file = out_file.unwrap();
+    // Writing our serialized data structure into the file.
     let _ = out_file.write_all(output.as_bytes());
 }
