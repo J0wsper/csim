@@ -3,20 +3,22 @@ use crate::RequestFullOrSuffix;
 use serde::Serialize;
 use std::collections::{BTreeMap, VecDeque};
 
+/// Struct that stores the individual suffix competitive ratio of our items.
 #[derive(Debug, Serialize)]
-pub struct IndScr<'a> {
-    full_costs: BTreeMap<&'a Item, VecDeque<u32>>,
-    suff_costs: BTreeMap<&'a Item, VecDeque<u32>>,
+pub struct IndScr {
+    // We store the labels of items instead of references to the items for ease of deserialization.
+    full_costs: BTreeMap<String, VecDeque<u32>>,
+    suff_costs: BTreeMap<String, VecDeque<u32>>,
 }
 
-impl<'a> IndScr<'a> {
-    fn new(trace: &VecDeque<&'a Item>) -> Self {
+impl IndScr {
+    fn new(trace: &VecDeque<&Item>) -> Self {
         Self {
             full_costs: {
                 let mut map = BTreeMap::new();
                 for request in trace {
-                    if !map.contains_key(request) {
-                        map.insert(*request, VecDeque::new());
+                    if !map.contains_key(&request.label) {
+                        map.insert(request.label.clone(), VecDeque::new());
                     }
                 }
                 map
@@ -24,8 +26,8 @@ impl<'a> IndScr<'a> {
             suff_costs: {
                 let mut map = BTreeMap::new();
                 for request in trace {
-                    if !map.contains_key(request) {
-                        map.insert(*request, VecDeque::new());
+                    if !map.contains_key(&request.label) {
+                        map.insert(request.label.clone(), VecDeque::new());
                     }
                 }
                 map
@@ -35,17 +37,17 @@ impl<'a> IndScr<'a> {
 }
 
 #[derive(Debug, Serialize)]
-pub struct Tracker<'a> {
+pub struct Tracker {
     full_cost: VecDeque<u32>,
-    full_pres: VecDeque<f32>,
     suff_cost: VecDeque<u32>,
+    full_pres: VecDeque<f32>,
     suff_pres: VecDeque<f32>,
-    ind_scr: IndScr<'a>,
+    ind_scr: IndScr,
 }
 
-impl<'a> Tracker<'a> {
+impl Tracker {
     // Creates a new tracker instance
-    pub fn new(trace: &VecDeque<&'a Item>) -> Self {
+    pub fn new(trace: &VecDeque<&Item>) -> Self {
         Self {
             full_cost: VecDeque::new(),
             full_pres: VecDeque::new(),
@@ -88,18 +90,18 @@ impl<'a> Tracker<'a> {
         }
     }
     /// Gets the individual suffix competitive ratio for the specified item at a particular index.
-    pub fn get_ind_scr(&self, index: u32, item: &'a Item) -> f32 {
+    pub fn get_ind_scr(&self, index: u32, item: &Item) -> f32 {
         let item_suff_costs = self
             .ind_scr
             .full_costs
-            .get(item)
+            .get(&item.label)
             .expect("Could not find item in full costs for indindividual SCR logging")
             .range(0..index as usize)
             .sum::<u32>();
         let item_full_costs = self
             .ind_scr
             .full_costs
-            .get(item)
+            .get(&item.label)
             .expect("Could not find item in full costs for indindividual SCR logging")
             .range(0..index as usize)
             .sum::<u32>();
@@ -116,7 +118,7 @@ impl<'a> Tracker<'a> {
                 let item_costs = self
                     .ind_scr
                     .full_costs
-                    .get_mut(item)
+                    .get_mut(&item.label)
                     .expect("Could not find item in full costs for individual SCR logging");
                 if is_hit {
                     self.full_cost.push_back(0);
@@ -130,7 +132,7 @@ impl<'a> Tracker<'a> {
                 let item_costs = self
                     .ind_scr
                     .suff_costs
-                    .get_mut(item)
+                    .get_mut(&item.label)
                     .expect("Could not find item in full costs for individual SCR logging");
                 if is_hit {
                     self.suff_cost.push_back(0);
@@ -161,5 +163,9 @@ impl<'a> Tracker<'a> {
                 }
             }
         }
+    }
+    /// Creates a string that is the TOML serialized version of this logger instance.
+    pub fn ser_logger(&self) -> String {
+        toml::to_string(&self).unwrap()
     }
 }

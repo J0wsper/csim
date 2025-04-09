@@ -10,10 +10,11 @@ use rand::prelude::*;
 use serde::{Deserialize, Serialize};
 // Standard collections
 use std::collections::{BTreeMap, VecDeque};
+use std::io::Write;
 use std::path::PathBuf;
 // File system is required to actually read and write toml files. Env is required to read command
 // line arguments.
-use std::fs;
+use std::fs::{self, File};
 
 pub mod logger;
 
@@ -384,7 +385,7 @@ impl<'a> Landlord<'a> {
         suffix_start: u32,
         mut s: Landlord<'a>,
         mut f: Landlord<'a>,
-        mut tracker: Tracker,
+        tracker: &mut Tracker,
     ) {
         // For each request in our trace
         for (i, request) in trace.iter().enumerate() {
@@ -483,7 +484,15 @@ fn main() {
     let s = Landlord::new(args.size, tiebreaking_policy, hit_policy);
     let f = Landlord::new(args.size, tiebreaking_policy, hit_policy);
     // Creating our tracker
-    let tracker = Tracker::new(&item_trace);
+    let mut tracker = Tracker::new(&item_trace);
     // Running the caches on our trace with the tracker
-    Landlord::run(item_trace, args.div, s, f, tracker);
+    Landlord::run(item_trace, args.div, s, f, &mut tracker);
+    let output = tracker.ser_logger();
+    let out_file = File::create(args.out_path);
+    if out_file.is_err() {
+        println!("Output file path already taken.");
+        return;
+    }
+    let mut out_file = out_file.unwrap();
+    let _ = out_file.write_all(output.as_bytes());
 }
