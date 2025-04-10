@@ -1,4 +1,4 @@
-use crate::landlord::RequestFullOrSuffix;
+use crate::landlord::{Landlord, RequestFullOrSuffix};
 use crate::Item;
 use serde::Serialize;
 use std::collections::{BTreeMap, VecDeque};
@@ -42,6 +42,8 @@ pub struct Tracker {
     suff_cost: VecDeque<u32>,
     full_pres: VecDeque<f32>,
     suff_pres: VecDeque<f32>,
+    full_states: VecDeque<BTreeMap<String, (f32, u32)>>,
+    suff_states: VecDeque<BTreeMap<String, (f32, u32)>>,
     ind_scr: IndScr,
 }
 
@@ -53,6 +55,8 @@ impl Tracker {
             full_pres: VecDeque::new(),
             suff_cost: VecDeque::new(),
             suff_pres: VecDeque::new(),
+            full_states: VecDeque::new(),
+            suff_states: VecDeque::new(),
             ind_scr: IndScr::new(trace),
         }
     }
@@ -164,6 +168,13 @@ impl Tracker {
             }
         }
     }
+    pub fn log_state(&mut self, cache: &Landlord, is_full: bool) {
+        if is_full {
+            self.full_states.push_back(cache.get_cache_state());
+        } else {
+            self.suff_states.push_back(cache.get_cache_state());
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -172,6 +183,8 @@ pub struct PrettyTracker {
     suff_costs: VecDeque<u32>,
     full_pres: VecDeque<f32>,
     suff_pres: VecDeque<f32>,
+    full_states: VecDeque<BTreeMap<String, (f32, u32)>>,
+    suff_states: VecDeque<BTreeMap<String, (f32, u32)>>,
     ind_scr: BTreeMap<String, f32>,
 }
 
@@ -182,6 +195,8 @@ impl PrettyTracker {
             suff_costs: tracker.suff_cost,
             full_pres: tracker.full_pres,
             suff_pres: tracker.suff_pres,
+            full_states: tracker.full_states,
+            suff_states: tracker.suff_states,
             ind_scr: {
                 let mut ind_scrs = BTreeMap::new();
                 for label in tracker.ind_scr.suff_costs.iter() {

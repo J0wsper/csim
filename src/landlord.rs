@@ -139,6 +139,17 @@ impl<'a> Landlord<'a> {
         self.tiebreaker.order.iter().position(|n| *n == item)
     }
 
+    pub fn get_cache_state(&self) -> BTreeMap<String, (f32, u32)> {
+        let mut ret = BTreeMap::new();
+        for item in self.cache.contents.iter() {
+            ret.insert(
+                item.0.get_label().to_string(),
+                (Landlord::norm_credit(item).0, item.0.get_size()),
+            );
+        }
+        ret
+    }
+
     // Takes care of cleaning up our tiebreaking order by removing a particular item once it gets
     // evicted.
     fn manage_tiebreak(&mut self, item: &Item) {
@@ -360,6 +371,7 @@ impl<'a> Landlord<'a> {
                     tracker.log_pres(pressure, RequestFullOrSuffix::Full(false));
                 }
             }
+            tracker.log_state(&f, true);
             // If we are not in the suffix yet, we are going to say that S simply paid no cost.
             // This is relevant for when we calculate individual suffix competitive ratios later.
             if i < suffix_start as usize {
@@ -380,6 +392,7 @@ impl<'a> Landlord<'a> {
                     tracker.log_pres(pressure, RequestFullOrSuffix::Suff(false));
                 }
             }
+            tracker.log_state(&s, false);
         }
     }
 }

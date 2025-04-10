@@ -1,6 +1,8 @@
 // Clap is the command line parser
 use clap::Parser;
+// Importing our landlord module
 use landlord::{HitPolicy, Item, Landlord, TiebreakingPolicy};
+// Serde does serialization and deserialization
 use serde::Deserialize;
 use std::collections::VecDeque;
 // We need to include the logger to do cost and pressure logging
