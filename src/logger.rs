@@ -37,7 +37,7 @@ impl IndScr {
 }
 
 #[derive(Debug)]
-pub struct Tracker {
+pub struct Logger {
     full_cost: VecDeque<u32>,
     suff_cost: VecDeque<u32>,
     full_pres: VecDeque<f32>,
@@ -47,8 +47,8 @@ pub struct Tracker {
     ind_scr: IndScr,
 }
 
-impl Tracker {
-    // Creates a new tracker instance
+impl Logger {
+    // Creates a new logger instance
     pub fn new(trace: &VecDeque<&Item>) -> Self {
         Self {
             full_cost: VecDeque::new(),
@@ -178,7 +178,7 @@ impl Tracker {
 }
 
 #[derive(Debug, Serialize)]
-pub struct PrettyTracker {
+pub struct PrettyLogger {
     full_costs: VecDeque<u32>,
     suff_costs: VecDeque<u32>,
     full_pres: VecDeque<f32>,
@@ -188,19 +188,19 @@ pub struct PrettyTracker {
     ind_scr: BTreeMap<String, f32>,
 }
 
-impl PrettyTracker {
-    pub fn new(tracker: Tracker) -> Self {
+impl PrettyLogger {
+    pub fn new(logger: Logger) -> Self {
         Self {
-            full_costs: tracker.full_cost,
-            suff_costs: tracker.suff_cost,
-            full_pres: tracker.full_pres,
-            suff_pres: tracker.suff_pres,
-            full_states: tracker.full_states,
-            suff_states: tracker.suff_states,
+            full_costs: logger.full_cost,
+            suff_costs: logger.suff_cost,
+            full_pres: logger.full_pres,
+            suff_pres: logger.suff_pres,
+            full_states: logger.full_states,
+            suff_states: logger.suff_states,
             ind_scr: {
                 let mut ind_scrs = BTreeMap::new();
-                for label in tracker.ind_scr.suff_costs.iter() {
-                    let full_costs = tracker.ind_scr.full_costs.get(label.0).unwrap();
+                for label in logger.ind_scr.suff_costs.iter() {
+                    let full_costs = logger.ind_scr.full_costs.get(label.0).unwrap();
                     let full_costs_sum: u32 = full_costs.iter().sum();
                     if full_costs_sum == 0 {
                         ind_scrs.insert(label.0.to_string(), 0.0);

@@ -6,7 +6,7 @@ use landlord::{HitPolicy, Item, Landlord, TiebreakingPolicy};
 use serde::Deserialize;
 use std::collections::VecDeque;
 // We need to include the logger to do cost and pressure logging
-use logger::{PrettyTracker, Tracker};
+use logger::{Logger, PrettyLogger};
 // We need ordered floats to keep them properly in our cache map
 // Io and path are required for writing to our output file and getting our path buffer input.
 use std::io::Write;
@@ -124,13 +124,13 @@ fn main() {
     // Creating our Landlord instances
     let s = Landlord::new(args.size, tiebreaking_policy, hit_policy);
     let f = Landlord::new(args.size, tiebreaking_policy, hit_policy);
-    // Creating our tracker
-    let mut tracker = Tracker::new(&item_trace);
-    // Running the caches on our trace with the tracker
-    Landlord::run(item_trace, args.div, s, f, &mut tracker);
-    // Creating a pretty tracker instance for serialization
-    let display = PrettyTracker::new(tracker);
-    // Serializing our pretty tracker into a string
+    // Creating our logger
+    let mut logger = Logger::new(&item_trace);
+    // Running the caches on our trace with the logger
+    Landlord::run(item_trace, args.div, s, f, &mut logger);
+    // Creating a pretty logger instance for serialization
+    let display = PrettyLogger::new(logger);
+    // Serializing our pretty logger into a string
     let output = display.ser_logger();
     // Creating the output file
     let out_file = File::create(args.out_path);

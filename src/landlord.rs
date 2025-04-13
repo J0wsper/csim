@@ -1,4 +1,4 @@
-use crate::Tracker;
+use crate::Logger;
 use ordered_float::OrderedFloat;
 // Rand is required for the rand hit/tiebreaking policy
 use rand::prelude::*;
@@ -6,6 +6,11 @@ use rand::prelude::*;
 use serde::Deserialize;
 // Standard collections
 use std::collections::{BTreeMap, VecDeque};
+
+// Constant to accomodate for floating point rounding errors in minimum credit estimation. If for
+// whatever reason you wanted more exact credit measurements than this, you could use f64 instead
+// of f32 and decrease EPSILON. However, for the sake of performance, I use f32.
+const EPSILON: f32 = 5e-7;
 
 // This is an enum to hold whether or not a request was a hit or a fault. This is used for both the
 // full trace cache and the suffix. The data in the fault field is the pressure increase on that
@@ -144,7 +149,7 @@ impl<'a> Landlord<'a> {
         for item in self.cache.contents.iter() {
             ret.insert(
                 item.0.get_label().to_string(),
-                (Landlord::norm_credit(item).0, item.0.get_size()),
+                (item.1 .0, item.0.get_size()),
             );
         }
         ret
@@ -155,7 +160,6 @@ impl<'a> Landlord<'a> {
     fn manage_tiebreak(&mut self, item: &Item) {
         if let Some(index) = self.get_tiebreaker_index(item) {
             self.tiebreaker.order.remove(index);
-            // TODO: This can cause subtraction with underflow
             self.tiebreaker.occupied -= item.get_size();
         }
     }
@@ -212,7 +216,7 @@ impl<'a> Landlord<'a> {
             // Refreshes to a random value between current credit and cost.
             HitPolicy::Rand => OrderedFloat(rand::rng().random_range(cred.0..label.get_cost().0)),
             // Refreshes it to half its current credit.
-            HitPolicy::Half => (label.get_cost() - *cred) / 2.0,
+            HitPolicy::Half => *cred + (label.get_cost() - *cred) / 2.0,
         };
 
         // Assigning our new credit to the item.
@@ -233,6 +237,7 @@ impl<'a> Landlord<'a> {
                 return cand;
             }
         }
+        dbg!(&zeros);
         // If we do not find any items in the zeros vector that are in our tiebreaking order, we
         // have somehow mismanaged our tiebreaking order and we throw an error.
         panic!("Tiebreaking order mismanagement");
@@ -269,7 +274,7 @@ impl<'a> Landlord<'a> {
         // Finding how many items of 0 credit there are now
         let mut zeros: Vec<&'_ Item> = Vec::new();
         for item in self.cache.contents.iter() {
-            if *item.1 == OrderedFloat(0.0) {
+            if *item.1 < OrderedFloat(EPSILON) {
                 zeros.push(*item.0);
             }
         }
@@ -342,17 +347,18 @@ impl<'a> Landlord<'a> {
 
     // Run our Landlord implementation over the provided trace. Trace is the trace you would like
     // the two landlord implementations to service, suffix_start is the point at which you want to
-    // split the trace into prefix and suffix (exclusive of endpoints) and the tracker is what
+    // split the trace into prefix and suffix (exclusive of endpoints) and the logger is what
     // keeps track of costs and pressure.
     pub fn run(
         trace: VecDeque<&'a Item>,
         suffix_start: u32,
         mut s: Landlord<'a>,
         mut f: Landlord<'a>,
-        tracker: &mut Tracker,
+        logger: &mut Logger,
     ) {
         // For each request in our trace
         for (i, request) in trace.iter().enumerate() {
+            println!("Servicing request {}", i);
             // We issue that request to the full trace cache because that one is going to have to
             // service that request no matter what.
             let res = f.request(request);
@@ -361,22 +367,22 @@ impl<'a> Landlord<'a> {
                 // If it is a hit, we log that the request was a hit with our cost logger and
                 // pressure logger.
                 RequestResult::Hit => {
-                    tracker.log_cost(request, RequestFullOrSuffix::Full(true));
-                    tracker.log_pres(0.0, RequestFullOrSuffix::Full(true));
+                    logger.log_cost(request, RequestFullOrSuffix::Full(true));
+                    logger.log_pres(0.0, RequestFullOrSuffix::Full(true));
                 }
                 // If the request was a hi, we log_cost that the full trace cache paid that item's cost
                 // and that the pressure went up by whatever amount we wrapped in RequestResult.
                 RequestResult::Fault(pressure) => {
-                    tracker.log_cost(request, RequestFullOrSuffix::Full(false));
-                    tracker.log_pres(pressure, RequestFullOrSuffix::Full(false));
+                    logger.log_cost(request, RequestFullOrSuffix::Full(false));
+                    logger.log_pres(pressure, RequestFullOrSuffix::Full(false));
                 }
             }
-            tracker.log_state(&f, true);
+            logger.log_state(&f, true);
             // If we are not in the suffix yet, we are going to say that S simply paid no cost.
             // This is relevant for when we calculate individual suffix competitive ratios later.
             if i < suffix_start as usize {
-                tracker.log_cost(request, RequestFullOrSuffix::Suff(true));
-                tracker.log_pres(0.0, RequestFullOrSuffix::Suff(true));
+                logger.log_cost(request, RequestFullOrSuffix::Suff(true));
+                logger.log_pres(0.0, RequestFullOrSuffix::Suff(true));
                 continue;
             }
             let res = s.request(request);
@@ -384,15 +390,15 @@ impl<'a> Landlord<'a> {
             // request results are for suff instead.
             match res {
                 RequestResult::Hit => {
-                    tracker.log_cost(request, RequestFullOrSuffix::Suff(true));
-                    tracker.log_pres(0.0, RequestFullOrSuffix::Suff(true));
+                    logger.log_cost(request, RequestFullOrSuffix::Suff(true));
+                    logger.log_pres(0.0, RequestFullOrSuffix::Suff(true));
                 }
                 RequestResult::Fault(pressure) => {
-                    tracker.log_cost(request, RequestFullOrSuffix::Suff(false));
-                    tracker.log_pres(pressure, RequestFullOrSuffix::Suff(false));
+                    logger.log_cost(request, RequestFullOrSuffix::Suff(false));
+                    logger.log_pres(pressure, RequestFullOrSuffix::Suff(false));
                 }
             }
-            tracker.log_state(&s, false);
+            logger.log_state(&s, false);
         }
     }
 }
